@@ -2,10 +2,6 @@
 
 # rapira/testing
 
-**Testing utilities for Rapira: provisions the server binary and runs a live server around your tests**
-
-[![Support on Boosty](https://img.shields.io/static/v1?style=for-the-badge&label=&message=Sponsorship&logo=Boosty&logoColor=white&color=%23F15F2C)](https://boosty.to/roxblnfk)
-
 </div>
 
 <br />
@@ -29,7 +25,7 @@ composer require --dev rapira/testing
 
 [![PHP](https://img.shields.io/packagist/php-v/rapira/testing.svg?style=flat-square&logo=php)](https://packagist.org/packages/rapira/testing)
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/rapira/testing.svg?style=flat-square&logo=packagist)](https://packagist.org/packages/rapira/testing)
-[![License](https://img.shields.io/packagist/l/rapira/testing.svg?style=flat-square)](https://github.com/rapira-rs/sdk-php/blob/1.x/LICENSE.md)
+[![License](https://img.shields.io/packagist/l/rapira/testing.svg?style=flat-square)](LICENSE.md)
 [![Total Downloads](https://img.shields.io/packagist/dt/rapira/testing.svg?style=flat-square)](https://packagist.org/packages/rapira/testing/stats)
 
 The `rapira` binary is downloaded on demand via [DLoad](https://github.com/php-internal/dload) the first time a suite that needs it runs.
@@ -92,7 +88,3 @@ final class WorkerTest
 | `address`      | `'127.0.0.1:8080'` | Listen address (`host:port`, `:port`, or `unix:<path>`).           |
 | `healthPath`   | `'/'`              | Path polled for readiness; must answer 2xx once the app serves.    |
 | `readyTimeout` | `5.0`              | Seconds to wait for the server to answer before failing.           |
-
-## License
-
-BSD-3-Clause. See [LICENSE.md](https://github.com/rapira-rs/sdk-php/blob/1.x/LICENSE.md).

@@ -1,6 +1,6 @@
 {
     "name": "rapira/testing",
-    "description": "Testing utilities for rapira: provisions the server binary and runs a live server around your tests",
+    "description": "Testing utilities for Rapira: provisions the server binary and runs a live server around your tests",
     "license": "BSD-3-Clause",
     "type": "library",
     "keywords": [
@@ -30,10 +30,18 @@
         "internal/path": "^1.3",
         "testo/testo": "^0.10.42"
     },
+    "require-dev": {
+        "rapira/contract": "dev-master"
+    },
     "autoload": {
         "psr-4": {
             "Rapira\\Sdk\\Testing\\": "src/",
             "Rapira\\Sdk\\Common\\": "src/Common/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Rapira\\Sdk\\Tests\\": "tests/"
         }
     },
     "minimum-stability": "dev",
