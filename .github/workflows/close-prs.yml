@@ -1,0 +1,27 @@
+name: Close PRs
+
+# This package is a read-only split of the rapira SDK monorepo. Contributions
+# are made upstream, so any PR opened directly against this mirror is closed
+# with a pointer to the monorepo. Dormant inside the monorepo — it only runs
+# once this directory has been split into its own repository.
+
+on:
+  pull_request_target:
+    types: [opened, reopened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  close:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 🔒 Close and redirect
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          UPSTREAM: https://github.com/rapira-rs/sdk-php
+        run: |
+          gh pr comment "$PR" --repo "$GITHUB_REPOSITORY" --body \
+            "Thanks! This repository is a read-only split of the rapira SDK monorepo. Please open your pull request against ${UPSTREAM} instead — changes to this package live under \`packages/testing\` there."
+          gh pr close "$PR" --repo "$GITHUB_REPOSITORY"

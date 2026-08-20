@@ -1,0 +1,17 @@
+<?php
+
+declare(strict_types=1);
+
+// Booted once per worker; the handler runs for every request. Resident state (here $booted) survives
+// across requests. Any path answers 200 — the test suite hammers "/" as its readiness probe.
+
+$booted = \date(DATE_ATOM);
+
+$handler = static function () use ($booted): void {
+    \header('content-type: text/plain');
+    echo 'worker: ', $_SERVER['REQUEST_METHOD'], ' ', $_SERVER['REQUEST_URI'], "\n";
+    echo 'booted: ', $booted, "\n";
+};
+
+while (\Rapira\handle_request($handler)) {
+}
