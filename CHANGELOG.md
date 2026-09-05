@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.2...testing-0.1.3) (2026-09-05)
+
+
+### Features
+
+* add support for rapira-windows repository in DLoader ([5c82c1f](https://github.com/rapira-rs/sdk-php/commit/5c82c1f4aff2b2d9206b3106a335aeedb7e39b53))
+
 ## [0.1.2](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.1...testing-0.1.2) (2026-08-20)
 
 
