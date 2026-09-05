@@ -140,8 +140,8 @@ final readonly class DLoader
                             uri="rapira-rs/rapira-windows"
                             asset-pattern="/^rapira-v.*-php{$phpPattern}-.*/"
                         />
-                        <binary name="rapira" pattern="/^rapira$/" />
-                        <file pattern="/^libphp\.(so|dylib)$/" />
+                        <binary name="rapira" pattern="/^rapira?$/" />
+                        <file pattern="/^.*$/" />
                     </software>
                 </registry>
             </dload>

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.3...testing-0.1.4) (2026-09-05)
+
+
+### Bug Fixes
+
+* update asset patterns for rapira binary and libphp file matching ([3d62cda](https://github.com/rapira-rs/sdk-php/commit/3d62cdaa8fd5c019de571089a789eeeb5e5c3205))
+
 ## [0.1.3](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.2...testing-0.1.3) (2026-09-05)
 
 
