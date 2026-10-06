@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.5](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.4...testing-0.1.5) (2026-10-06)
+
+
+### Bug Fixes
+
+* **testing:** give each dload download its own temp dir so a repeated download works on Windows ([8fc0d6e](https://github.com/rapira-rs/sdk-php/commit/8fc0d6e5024da0f7c9464aada0a115e4e373508b))
+* **testing:** keep the Windows release layout so bundled PHP extensions load ([228df32](https://github.com/rapira-rs/sdk-php/commit/228df324bd1d4a7ec7f6af1ce9d876774fed5fec))
+* **testing:** run rapira 0.9 through a generated rapira.toml ([8fc0d6e](https://github.com/rapira-rs/sdk-php/commit/8fc0d6e5024da0f7c9464aada0a115e4e373508b))
+
+
+### Documentation
+
+* **testing:** document the GitHub token and dload version cache ([97f301b](https://github.com/rapira-rs/sdk-php/commit/97f301b867619241d536481724b9709cd917218d))
+
 ## [0.1.4](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.3...testing-0.1.4) (2026-09-05)
 
 

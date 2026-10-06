@@ -45,6 +45,7 @@ final readonly class RunRapiraInterceptor implements TestCaseRunInterceptor
             $this->server->binary,
             $this->server->workingDirectory,
             $this->messenger->channel(self::CHANNEL_RAPIRA),
+            $this->server->config,
         );
 
         $runner->start(

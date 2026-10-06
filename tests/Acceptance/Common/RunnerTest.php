@@ -8,7 +8,6 @@ use Internal\Path;
 use Rapira\Sdk\Common\Mode;
 use Rapira\Sdk\Testing\Common\DLoader;
 use Rapira\Sdk\Testing\Common\Runner;
-use Rapira\Sdk\Tests\Support\SkipOnWindows;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Lifecycle\AfterTest;
@@ -19,12 +18,10 @@ use Testo\Test;
  *
  * Each test boots the real binary over a real socket, hits an HTTP route, and checks the app answered
  * — so it exercises the whole start → HTTP readiness probe → stop cycle. The binary is downloaded once
- * (into `runtime/bin`) and reused. Hits the network on first run; skipped on Windows, which rapira
- * ships no build for.
+ * (into `runtime/bin`) and reused. Hits the network on first run.
  */
 #[Test]
 #[Covers(Runner::class)]
-#[SkipOnWindows('rapira ships no Windows build to run')]
 final class RunnerTest
 {
     private ?Runner $runner = null;
@@ -78,7 +75,7 @@ final class RunnerTest
             return $binary;
         }
 
-        $path = Path::create(\dirname(__DIR__, 3))->join('runtime', 'bin', 'rapira');
+        $path = Path::create(\dirname(__DIR__, 3))->join('runtime', 'bin', \PHP_OS_FAMILY === 'Windows' ? 'rapira.exe' : 'rapira');
         if (!$path->isFile()) {
             (new DLoader())->download($path->parent());
         }

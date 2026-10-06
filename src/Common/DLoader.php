@@ -6,7 +6,9 @@ namespace Rapira\Sdk\Testing\Common;
 
 use Internal\DLoad\Bootstrap;
 use Internal\DLoad\DLoad;
+use Internal\DLoad\Module\Common\OperatingSystem;
 use Internal\DLoad\Module\Config\Schema\Action\Download as DownloadConfig;
+use Internal\DLoad\Module\Config\Schema\Action\Type;
 use Internal\DLoad\Service\Logger as DLoadLogger;
 use Internal\Path;
 use Psr\Log\LoggerInterface;
@@ -23,7 +25,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
  *
  * Rather than reading a project `dload.xml`, the software definition (GitHub repository and extraction
  * rules) is assembled in memory so the download is fully self-contained: the release asset is pinned to
- * the requested embedded-PHP version, and the binary together with its bundled `libphp` is extracted
+ * the requested embedded-PHP version, and the binary together with its bundled runtime is extracted
  * into an explicit destination.
  */
 final readonly class DLoader
@@ -31,23 +33,33 @@ final readonly class DLoader
     /** @var non-empty-string dload identifier of the rapira software */
     private const SOFTWARE = 'rapira';
 
+    /** @var non-empty-string rapira releases {@see Runner} speaks to; 0.x minors break the CLI and config */
+    private const VERSION = '^0.9';
+
     /**
      * @param LoggerInterface $logger Receives each line of dload output at debug level.
+     * @param \SplFileInfo|null $archive Local release asset to extract instead of downloading one from
+     * GitHub (no network); it must have the layout of the release for the host OS.
      */
     public function __construct(
         private LoggerInterface $logger = new NullLogger(),
+        private ?\SplFileInfo $archive = null,
     ) {}
 
     /**
-     * Download `rapira` (and its bundled `libphp.*`) into $destination.
+     * Download `rapira` and its bundled runtime into $destination; the binary always lands at
+     * `{destination}/rapira` (`rapira.exe` on Windows).
      *
-     * Flat extraction: only the files matched by the `<binary>`/`<file>` rules are pulled out of the
-     * release tarball and dropped side by side into $destination, so both end up directly there:
-     * `{destination}/rapira` and `{destination}/libphp.so`. The shipped binary resolves the library via
-     * a relative rpath (`$ORIGIN/../lib/rapira`); placing `libphp.so` next to the binary changes that
-     * layout, so at runtime the loader must be pointed at $destination (e.g. via `LD_LIBRARY_PATH`).
+     * Linux/macOS — flat extraction: the release tarball nests `bin/rapira` and `lib/rapira/libphp.*`;
+     * every file is pulled out by name and dropped side by side into $destination. The shipped binary
+     * resolves the library via a relative rpath (`$ORIGIN/../lib/rapira`), so at runtime the loader must
+     * be pointed at $destination (e.g. via `LD_LIBRARY_PATH`).
      *
-     * @param Path $destination Directory to extract `rapira` and `libphp.*` into.
+     * Windows — structure-preserving extraction: the zip keeps `rapira.exe` and `php8ts.dll` at its root
+     * and the extension DLLs under `ext/`, which the bundled `php.ini` (`extension_dir=ext`) resolves
+     * against. Flattening would leave those extensions unloadable.
+     *
+     * @param Path $destination Directory to extract the release into.
      * @param non-empty-string|null $phpVersion Embedded-PHP version the asset must match; defaults to
      * "8.5" when null.
      *
@@ -66,8 +78,12 @@ final readonly class DLoader
         $output = new BufferedOutput(OutputInterface::VERBOSITY_DEBUG);
         $input = new ArrayInput([]);
 
+        # A fresh temp dir per call: on Windows ext/phar keeps a read archive open until the process
+        # ends, so a second download of the same asset into the same temp path is denied.
+        $tempDir = Path::create(\sys_get_temp_dir())->join('rapira-dload-' . \bin2hex(\random_bytes(6)));
+
         $container = Bootstrap::init()
-            ->withConfig(xml: $this->buildConfig($phpVersion), environment: \getenv())
+            ->withConfig(xml: $this->buildConfig($phpVersion, $tempDir), environment: \getenv())
             ->finish();
         $container->set($input, InputInterface::class);
         $container->set($output, OutputInterface::class);
@@ -77,10 +93,19 @@ final readonly class DLoader
         // Target the in-memory software, extracting straight into the requested destination.
         $action = new DownloadConfig();
         $action->software = self::SOFTWARE;
+        $action->version = self::VERSION;
         $action->extractPath = (string) $destination;
+        # Follows the OS dload resolved for asset selection, so the layout matches the archive it picks.
+        if ($container->get(OperatingSystem::class) === OperatingSystem::Windows) {
+            $action->type = Type::Archive;
+        }
 
         /** @var DLoad $dload */
         $dload = $container->get(DLoad::class);
+        if ($this->archive !== null) {
+            $dload->useMock = true;
+            $dload->mockArchive = $this->archive;
+        }
 
         $failure = null;
         try {
@@ -95,6 +120,8 @@ final readonly class DLoader
             // A task may fail before it is even scheduled, e.g. when no asset matches the pattern.
             $failure = $e;
         }
+
+        @\rmdir((string) $tempDir);
 
         // Surface dload's own progress and diagnostics through the logger.
         $this->logLines($output->fetch());
@@ -112,17 +139,19 @@ final readonly class DLoader
      * pattern so only the matching release asset is selected.
      *
      * @param non-empty-string $phpVersion
+     * @param Path $tempDir Directory dload downloads the asset into before extracting it.
      * @return non-empty-string
      *
      * @psalm-pure
      */
-    private function buildConfig(string $phpVersion): string
+    private function buildConfig(string $phpVersion, Path $tempDir): string
     {
         $phpPattern = \htmlspecialchars(\preg_quote($phpVersion, '/'), ENT_QUOTES | ENT_XML1);
+        $tempAttr = \htmlspecialchars((string) $tempDir, ENT_QUOTES | ENT_XML1);
 
         return <<<XML
             <?xml version="1.0"?>
-            <dload>
+            <dload temp-dir="{$tempAttr}">
                 <registry overwrite="false">
                     <software
                         name="Rapira"
@@ -140,7 +169,7 @@ final readonly class DLoader
                             uri="rapira-rs/rapira-windows"
                             asset-pattern="/^rapira-v.*-php{$phpPattern}-.*/"
                         />
-                        <binary name="rapira" pattern="/^rapira?$/" />
+                        <binary name="rapira" />
                         <file pattern="/^.*$/" />
                     </software>
                 </registry>

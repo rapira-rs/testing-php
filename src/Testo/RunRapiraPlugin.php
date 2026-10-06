@@ -33,16 +33,20 @@ final class RunRapiraPlugin implements PluginConfigurator
 
     /**
      * @param non-empty-string $binary Absolute path to the rapira executable. When missing, it is
-     * downloaded via dload into its parent directory (alongside the bundled `libphp`).
+     * downloaded via dload into its parent directory, together with its bundled PHP runtime.
      * @param non-empty-string $workingDirectory Absolute path to the application directory containing
-     * `worker.php` and `rapira.toml`, from which the server is run.
+     * the worker script, from which the server is run.
      * @param non-empty-string|null $phpVersion Embedded-PHP version the downloaded rapira asset must
      * match, e.g. "8.5". When null, {@see DLoader::download()} picks its default.
+     * @param non-empty-string|null $config Base `rapira.toml` the server runs with; the listen address,
+     * mode and entrypoint from {@see RunRapira} replace its own. When null,
+     * `{workingDirectory}/rapira.toml` is used if it exists.
      */
     public function __construct(
         private readonly string $binary,
         private readonly string $workingDirectory,
         private readonly ?string $phpVersion = null,
+        private readonly ?string $config = null,
     ) {}
 
     #[\Override]
@@ -58,7 +62,7 @@ final class RunRapiraPlugin implements PluginConfigurator
 
         // Expose the binary and application directory so Testo's injector can build
         // RunRapiraInterceptor when it wires up the #[RunRapira] attribute.
-        $container->set(new RapiraServer($this->binary, $this->workingDirectory));
+        $container->set(new RapiraServer($this->binary, $this->workingDirectory, $this->config));
     }
 
     /**

@@ -6,22 +6,20 @@ namespace Rapira\Sdk\Tests\Acceptance\Common;
 
 use Internal\Path;
 use Rapira\Sdk\Testing\Common\DLoader;
-use Rapira\Sdk\Tests\Support\SkipOnWindows;
 use Testo\Assert;
 use Testo\Codecov\Covers;
 use Testo\Test;
 
 /**
- * End-to-end coverage for {@see DLoader}: downloads the real rapira release from GitHub and checks the
- * binary and its bundled `libphp` land side by side in the destination. Hits the network. Skipped on
- * Windows, which rapira ships no build for.
+ * End-to-end coverage for {@see DLoader}: downloads the real rapira release for the host OS from GitHub
+ * and checks the binary and its bundled PHP runtime land where the binary loads them from. Hits the
+ * network.
  */
 #[Test]
 #[Covers(DLoader::class)]
-#[SkipOnWindows('rapira ships no Windows build to download')]
 final class DLoaderTest
 {
-    public function downloadsBinaryAndLibphpIntoDestination(): void
+    public function downloadsBinaryAndRuntimeIntoDestination(): void
     {
         $destination = Path::create(\sys_get_temp_dir())
             ->join('rapira-dload-' . \bin2hex(\random_bytes(6)));
@@ -29,6 +27,16 @@ final class DLoaderTest
 
         try {
             (new DLoader())->download($destination);
+
+            if (\PHP_OS_FAMILY === 'Windows') {
+                Assert::true($destination->join('rapira.exe')->isFile(), 'rapira.exe at the destination root');
+                Assert::true($destination->join('php8ts.dll')->isFile(), 'php8ts.dll next to rapira.exe');
+                Assert::true(
+                    $destination->join('ext/php_mbstring.dll')->isFile(),
+                    'extension DLLs under ext/, where php.ini points extension_dir',
+                );
+                return;
+            }
 
             Assert::true(
                 $destination->join('rapira')->isFile(),

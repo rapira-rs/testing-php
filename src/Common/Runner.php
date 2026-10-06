@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rapira\Sdk\Testing\Common;
 
+use Internal\Toml\Toml;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use Rapira\Sdk\Common\Mode;
@@ -23,17 +24,24 @@ final class Runner
     /** @var string|null File the running server's stdout/stderr is redirected to. */
     private ?string $outputFile = null;
 
+    /** @var string|null Configuration generated for the running server. */
+    private ?string $configFile = null;
+
     /**
      * @param non-empty-string $binary Absolute path to the rapira executable.
      * @param non-empty-string $workingDirectory Absolute path to the application directory containing
-     * the worker script and `rapira.toml`. The server runs with this as its working directory, and
-     * relative worker paths resolve against it.
+     * the worker script. The server runs with this as its working directory, and relative worker paths
+     * resolve against it.
      * @param LoggerInterface $logger Receives the invoked command and readiness at debug level.
+     * @param non-empty-string|null $config Base `rapira.toml` whose settings the server runs with; the
+     * listen address, mode and entrypoint given to {@see start()} replace its own. When null,
+     * `{workingDirectory}/rapira.toml` is used if it exists, otherwise the server runs on defaults.
      */
     public function __construct(
         private readonly string $binary,
         private readonly string $workingDirectory,
         private readonly LoggerInterface $logger = new NullLogger(),
+        private readonly ?string $config = null,
     ) {}
 
     /**
@@ -45,7 +53,7 @@ final class Runner
      *
      * @param non-empty-string $worker Entrypoint PHP script; absolute, or relative to the working
      * directory.
-     * @param non-empty-string $address Listen address (`--listen`): `host:port`, `:port`, or
+     * @param non-empty-string $address Listen address (`http.listen`): `host:port`, `:port`, or
      * `unix:<path>`. Also used to reach the server for the readiness probe.
      * @param non-empty-string $healthPath Request path polled for readiness; must answer 2xx once the
      * app is serving (e.g. a hello-world route).
@@ -71,7 +79,8 @@ final class Runner
             throw new \RuntimeException("rapira worker script not found at: {$workerPath}");
         }
 
-        $command = $this->serveCommand($mode, $address, $workerPath);
+        $this->configFile = $this->writeConfig($mode, $address, $workerPath);
+        $command = \sprintf('%s serve %s', \escapeshellarg($this->binary), \escapeshellarg($this->configFile));
         $this->logger->debug("Starting rapira: {$command}");
 
         // Send stdout/stderr to a file, not a pipe: nothing here reads the pipes, and a worker that
@@ -91,6 +100,7 @@ final class Runner
         $process = \proc_open($command, $descriptors, $pipes, $this->workingDirectory, $this->serverEnv());
         if (!\is_resource($process)) {
             $this->cleanupOutput();
+            $this->cleanupConfig();
             throw new \RuntimeException('Failed to start rapira process');
         }
         $this->process = $process;
@@ -108,6 +118,7 @@ final class Runner
     {
         if ($this->process === null) {
             $this->cleanupOutput();
+            $this->cleanupConfig();
             return;
         }
 
@@ -123,23 +134,53 @@ final class Runner
         \proc_close($this->process);
         $this->process = null;
         $this->cleanupOutput();
+        $this->cleanupConfig();
     }
 
     /**
-     * Build the `rapira serve` command: run mode, listen address, and the worker entrypoint. These CLI
-     * flags override the corresponding keys in the application's `rapira.toml`.
+     * Write the configuration `rapira serve` runs with: the base `rapira.toml`, if any, with the listen
+     * address, mode and entrypoint replaced.
      *
      * @param non-empty-string $worker Absolute path to the worker script.
+     * @return non-empty-string Path to the written file.
      */
-    private function serveCommand(Mode $mode, string $address, string $worker): string
+    private function writeConfig(Mode $mode, string $address, string $worker): string
     {
-        return \sprintf(
-            '%s serve --mode %s --listen %s %s',
-            \escapeshellarg($this->binary),
-            \escapeshellarg($mode->value),
-            \escapeshellarg($address),
-            \escapeshellarg($worker),
+        $base = $this->config ?? $this->workingDirectory . '/rapira.toml';
+        if ($this->config === null && !\is_file($base)) {
+            $base = null;
+        }
+
+        $data = [];
+        if ($base !== null) {
+            $toml = @\file_get_contents($base);
+            $toml === false and throw new \RuntimeException("cannot read rapira config: {$base}");
+            /** @var array<string, mixed> $data A TOML document's root is a table, so its keys are strings */
+            $data = Toml::parseToArray($toml);
+        }
+
+        /** @var mixed $http */
+        $http = $data['http'] ?? null;
+        \is_array($http) or $http = [];
+        /** @var mixed $pool */
+        $pool = $http['pool'] ?? null;
+        \is_array($pool) or $pool = [];
+        $pool['entrypoint'] = $worker;
+        $pool['mode'] = $mode->value;
+        $http['listen'] = $address;
+        $http['pool'] = $pool;
+        $data['http'] = $http;
+
+        # rapira resolves relative paths against the config's directory, so the copy sits next to the base.
+        $file = \sprintf(
+            '%s/.rapira-%s.toml',
+            $base === null ? \sys_get_temp_dir() : \dirname($base),
+            \bin2hex(\random_bytes(6)),
         );
+        \file_put_contents($file, (string) Toml::encode($data)) === false
+            and throw new \RuntimeException("cannot write rapira config: {$file}");
+
+        return $file;
     }
 
     /**
@@ -335,6 +376,18 @@ final class Runner
         }
 
         $this->outputFile = null;
+    }
+
+    /**
+     * Remove the generated configuration, if any.
+     */
+    private function cleanupConfig(): void
+    {
+        if ($this->configFile !== null && \is_file($this->configFile)) {
+            @\unlink($this->configFile);
+        }
+
+        $this->configFile = null;
     }
 
     /**
