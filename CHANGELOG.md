@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.6](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.5...testing-0.1.6) (2026-10-06)
+
+
+### Features
+
+* **testing:** add FakeHttpDispatcher and FakeExchange ([97afe49](https://github.com/rapira-rs/sdk-php/commit/97afe499d8c87a29a30e670fc74eb7fd67d3fc61))
+* **testing:** add FakeRuntime to script the Rapira functions in tests ([0499f97](https://github.com/rapira-rs/sdk-php/commit/0499f97a52c40effa5cac34ad64db128640fb995))
+
+
+### Code Refactoring
+
+* **testing:** carry file paths as Path ([aba7d3b](https://github.com/rapira-rs/sdk-php/commit/aba7d3b51d1f661d0fbcbe0559c9646f7baa15d1))
+
 ## [0.1.5](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.4...testing-0.1.5) (2026-10-06)
 
 

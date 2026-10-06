@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Rapira\Sdk\Testing\Common;
 
+use Internal\Path;
 use Internal\Toml\Toml;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -21,28 +22,36 @@ final class Runner
     /** @var resource|null Running process handle. */
     private $process = null;
 
-    /** @var string|null File the running server's stdout/stderr is redirected to. */
-    private ?string $outputFile = null;
+    /** File the running server's stdout/stderr is redirected to. */
+    private ?Path $outputFile = null;
 
-    /** @var string|null Configuration generated for the running server. */
-    private ?string $configFile = null;
+    /** Configuration generated for the running server. */
+    private ?Path $configFile = null;
+
+    private readonly Path $binary;
+    private readonly Path $workingDirectory;
+    private readonly ?Path $config;
 
     /**
-     * @param non-empty-string $binary Absolute path to the rapira executable.
-     * @param non-empty-string $workingDirectory Absolute path to the application directory containing
-     * the worker script. The server runs with this as its working directory, and relative worker paths
-     * resolve against it.
+     * @param Path|non-empty-string $binary Absolute path to the rapira executable.
+     * @param Path|non-empty-string $workingDirectory Absolute path to the application directory
+     * containing the worker script. The server runs with this as its working directory, and relative
+     * worker paths resolve against it.
      * @param LoggerInterface $logger Receives the invoked command and readiness at debug level.
-     * @param non-empty-string|null $config Base `rapira.toml` whose settings the server runs with; the
-     * listen address, mode and entrypoint given to {@see start()} replace its own. When null,
+     * @param Path|non-empty-string|null $config Base `rapira.toml` whose settings the server runs with;
+     * the listen address, mode and entrypoint given to {@see start()} replace its own. When null,
      * `{workingDirectory}/rapira.toml` is used if it exists, otherwise the server runs on defaults.
      */
     public function __construct(
-        private readonly string $binary,
-        private readonly string $workingDirectory,
+        Path|string $binary,
+        Path|string $workingDirectory,
         private readonly LoggerInterface $logger = new NullLogger(),
-        private readonly ?string $config = null,
-    ) {}
+        Path|string|null $config = null,
+    ) {
+        $this->binary = Path::create($binary);
+        $this->workingDirectory = Path::create($workingDirectory);
+        $this->config = $config === null ? null : Path::create($config);
+    }
 
     /**
      * Start the server and wait until it answers an HTTP request. A no-op if one is already running.
@@ -51,7 +60,7 @@ final class Runner
      * socket before its PHP workers can serve, so a socket that merely accepts connections is not yet
      * a server that answers. The probe is retried until a 2xx response arrives or the timeout elapses.
      *
-     * @param non-empty-string $worker Entrypoint PHP script; absolute, or relative to the working
+     * @param Path|non-empty-string $worker Entrypoint PHP script; absolute, or relative to the working
      * directory.
      * @param non-empty-string $address Listen address (`http.listen`): `host:port`, `:port`, or
      * `unix:<path>`. Also used to reach the server for the readiness probe.
@@ -61,7 +70,7 @@ final class Runner
      */
     public function start(
         Mode $mode,
-        string $worker,
+        Path|string $worker,
         string $address,
         string $healthPath = '/',
         float $readyTimeout = 5.0,
@@ -70,17 +79,17 @@ final class Runner
             return;
         }
 
-        if (!\file_exists($this->binary)) {
+        if (!$this->binary->exists()) {
             throw new \RuntimeException("rapira binary not found at: {$this->binary} (was it downloaded?)");
         }
 
-        $workerPath = $this->resolveWorker($worker);
-        if (!\file_exists($workerPath)) {
+        $workerPath = $this->resolveWorker(Path::create($worker));
+        if (!$workerPath->exists()) {
             throw new \RuntimeException("rapira worker script not found at: {$workerPath}");
         }
 
         $this->configFile = $this->writeConfig($mode, $address, $workerPath);
-        $command = \sprintf('%s serve %s', \escapeshellarg($this->binary), \escapeshellarg($this->configFile));
+        $command = \sprintf('%s serve %s', \escapeshellarg((string) $this->binary), \escapeshellarg((string) $this->configFile));
         $this->logger->debug("Starting rapira: {$command}");
 
         // Send stdout/stderr to a file, not a pipe: nothing here reads the pipes, and a worker that
@@ -88,8 +97,8 @@ final class Runner
         // waitForReady() replay the server's own diagnostics when it never comes up.
         $nullDevice = \DIRECTORY_SEPARATOR === '\\' ? 'NUL' : '/dev/null';
         $captured = \tempnam(\sys_get_temp_dir(), 'rapira-');
-        $this->outputFile = $captured === false ? null : $captured;
-        $sink = $this->outputFile ?? $nullDevice;
+        $this->outputFile = $captured === false ? null : Path::create($captured);
+        $sink = $this->outputFile === null ? $nullDevice : (string) $this->outputFile;
 
         $descriptors = [
             0 => ['file', $nullDevice, 'r'], // stdin: rapira reads none
@@ -97,7 +106,7 @@ final class Runner
             2 => ['file', $sink, 'a'],       // stderr
         ];
 
-        $process = \proc_open($command, $descriptors, $pipes, $this->workingDirectory, $this->serverEnv());
+        $process = \proc_open($command, $descriptors, $pipes, (string) $this->workingDirectory, $this->serverEnv());
         if (!\is_resource($process)) {
             $this->cleanupOutput();
             $this->cleanupConfig();
@@ -141,19 +150,19 @@ final class Runner
      * Write the configuration `rapira serve` runs with: the base `rapira.toml`, if any, with the listen
      * address, mode and entrypoint replaced.
      *
-     * @param non-empty-string $worker Absolute path to the worker script.
-     * @return non-empty-string Path to the written file.
+     * @param Path $worker Absolute path to the worker script.
+     * @return Path The written file.
      */
-    private function writeConfig(Mode $mode, string $address, string $worker): string
+    private function writeConfig(Mode $mode, string $address, Path $worker): Path
     {
-        $base = $this->config ?? $this->workingDirectory . '/rapira.toml';
-        if ($this->config === null && !\is_file($base)) {
+        $base = $this->config ?? $this->workingDirectory->join('rapira.toml');
+        if ($this->config === null && !$base->isFile()) {
             $base = null;
         }
 
         $data = [];
         if ($base !== null) {
-            $toml = @\file_get_contents($base);
+            $toml = @\file_get_contents((string) $base);
             $toml === false and throw new \RuntimeException("cannot read rapira config: {$base}");
             /** @var array<string, mixed> $data A TOML document's root is a table, so its keys are strings */
             $data = Toml::parseToArray($toml);
@@ -165,19 +174,16 @@ final class Runner
         /** @var mixed $pool */
         $pool = $http['pool'] ?? null;
         \is_array($pool) or $pool = [];
-        $pool['entrypoint'] = $worker;
+        $pool['entrypoint'] = (string) $worker;
         $pool['mode'] = $mode->value;
         $http['listen'] = $address;
         $http['pool'] = $pool;
         $data['http'] = $http;
 
         # rapira resolves relative paths against the config's directory, so the copy sits next to the base.
-        $file = \sprintf(
-            '%s/.rapira-%s.toml',
-            $base === null ? \sys_get_temp_dir() : \dirname($base),
-            \bin2hex(\random_bytes(6)),
-        );
-        \file_put_contents($file, (string) Toml::encode($data)) === false
+        $file = ($base === null ? Path::create(\sys_get_temp_dir()) : $base->parent())
+            ->join(\sprintf('.rapira-%s.toml', \bin2hex(\random_bytes(6))));
+        \file_put_contents((string) $file, (string) Toml::encode($data)) === false
             and throw new \RuntimeException("cannot write rapira config: {$file}");
 
         return $file;
@@ -185,12 +191,12 @@ final class Runner
 
     /**
      * Resolve a worker path against the working directory when it is relative.
+     *
+     * @psalm-mutation-free
      */
-    private function resolveWorker(string $worker): string
+    private function resolveWorker(Path $worker): Path
     {
-        return $this->isAbsolutePath($worker)
-            ? $worker
-            : $this->workingDirectory . '/' . $worker;
+        return $worker->isAbsolute() ? $worker : $this->workingDirectory->join($worker);
     }
 
     /**
@@ -209,7 +215,7 @@ final class Runner
             return null;
         }
 
-        $binaryDir = \dirname($this->binary);
+        $binaryDir = (string) $this->binary->parent();
 
         /** @var array<string, string> $env */
         $env = \getenv();
@@ -344,16 +350,16 @@ final class Runner
      */
     private function readServerOutput(): string
     {
-        if ($this->outputFile === null || !\is_file($this->outputFile)) {
+        if ($this->outputFile === null || !$this->outputFile->isFile()) {
             return '';
         }
 
-        $size = \filesize($this->outputFile);
+        $size = \filesize((string) $this->outputFile);
         if ($size === false || $size === 0) {
             return '';
         }
 
-        $handle = \fopen($this->outputFile, 'rb');
+        $handle = \fopen((string) $this->outputFile, 'rb');
         if ($handle === false) {
             return '';
         }
@@ -371,8 +377,8 @@ final class Runner
      */
     private function cleanupOutput(): void
     {
-        if ($this->outputFile !== null && \is_file($this->outputFile)) {
-            @\unlink($this->outputFile);
+        if ($this->outputFile?->isFile()) {
+            @\unlink((string) $this->outputFile);
         }
 
         $this->outputFile = null;
@@ -383,22 +389,10 @@ final class Runner
      */
     private function cleanupConfig(): void
     {
-        if ($this->configFile !== null && \is_file($this->configFile)) {
-            @\unlink($this->configFile);
+        if ($this->configFile?->isFile()) {
+            @\unlink((string) $this->configFile);
         }
 
         $this->configFile = null;
-    }
-
-    /**
-     * Whether the path is absolute (Unix `/…`, or Windows `\…` / `C:\…`).
-     */
-    private function isAbsolutePath(string $path): bool
-    {
-        return $path !== '' && (
-            $path[0] === '/'
-                || $path[0] === '\\'
-                || (\strlen($path) > 2 && \ctype_alpha($path[0]) && $path[1] === ':')
-        );
     }
 }

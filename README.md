@@ -91,6 +91,55 @@ final class WorkerTest
 
 The server runs with a copy of the application's `rapira.toml` in which `mode`, `worker` and `address` replace `http.pool.mode`, `http.pool.entrypoint` and `http.listen`. The base file is `RunRapiraPlugin`'s `config` argument, or `rapira.toml` in the working directory when that argument is omitted; without either, the server runs on rapira's defaults. The copy is written next to the base file, so relative paths in it keep resolving, and is removed when the server stops.
 
+## Scripting the runtime without a server
+
+Outside a Rapira process the `Rapira\*` functions are the stubs from `rapira/contract`: `get_mode()` answers `Mode::Classic`, and there are no worker requests and no dispatcher. To test code that calls them in another mode, install a `FakeRuntime`; the stubs answer through it until `FakeRuntime::reset()`.
+
+```php
+use Rapira\Mode;
+use Rapira\Sdk\Testing\Double\FakeRuntime;
+
+$runtime = (new FakeRuntime(Mode::Worker, captureOutput: true))
+    ->queue('GET', '/search?q=rapira', cookies: ['sid' => 'abc'])
+    ->queue('POST', '/login', post: ['user' => 'alice'])
+    ->install();
+
+try {
+    $app->run(); // loops over \Rapira\handle_request()
+    // $runtime->servedRequests === 2, $runtime->outputs holds what each request printed
+} finally {
+    FakeRuntime::reset();
+}
+```
+
+- **Worker mode:** each queued request sets `$_SERVER`, `$_GET`, `$_POST`, `$_COOKIE`, `$_FILES` and `$_REQUEST` while the handler runs; the previous values come back afterwards. `queue()` derives the usual `$_SERVER` entries from the method and URI and parses the query string; for full control pass a `WorkerRequest`, or a plain array of `$_SERVER` entries, in `requests`. The loop goes on while the handler returns `true`, as with the extension.
+- **Output:** with `captureOutput: true` what the handler prints lands in `$runtime->outputs`, one entry per request, instead of the test's own output.
+- **Dispatcher mode:** `get_dispatcher()` returns the `dispatcher` you pass.
+- **Logs and finished requests:** `log()` calls land in `$runtime->logs`, `rapira_finish_request()` calls in `$runtime->finishedRequests`.
+
+Like the extension, `handle_request()` and `get_dispatcher()` refuse outside their mode. The installed double is process-wide: reset it after every test that installs one.
+
+### HTTP dispatcher mode
+
+`FakeHttpDispatcher` hands out queued `FakeExchange`s in order, then throws `ClosedException` as a drained host does. Each `FakeExchange` records what the worker writes and enforces the host's ordering rules: one final head, body until `$eos`, nothing after finalization.
+
+```php
+use Rapira\Mode;
+use Rapira\Sdk\Testing\Double\FakeRuntime;
+use Rapira\Sdk\Testing\Double\Http\FakeExchange;
+use Rapira\Sdk\Testing\Double\Http\FakeHttpDispatcher;
+
+$exchange = FakeExchange::for('/users/42', headers: ['accept' => ['application/json']]);
+(new FakeRuntime(Mode::Dispatcher, new FakeHttpDispatcher($exchange)))->install();
+
+$app->run(); // receives from \Rapira\get_dispatcher() until it is drained
+
+// $exchange->status, $exchange->header('content-type'), $exchange->getBody(), $exchange->isFinalized()
+```
+
+- **Host-side failures:** `discard()` makes the exchange arrive already cancelled; `discardOnWrite()` makes the first write find it closed; `refuseFiles` makes `sendFile()` throw `FileNotSendableException`.
+- **Receive hook:** `FakeHttpDispatcher::$beforeReceive` runs before every `receive()`, e.g. to check what the worker released, and `$receives` counts the calls.
+
 ## GitHub API limits and the version cache
 
 Every suite that has to fetch the binary asks the GitHub API which releases `rapira-rs/rapira` (or

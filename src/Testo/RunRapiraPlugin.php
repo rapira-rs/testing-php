@@ -31,23 +31,31 @@ final class RunRapiraPlugin implements PluginConfigurator
 {
     public const CHANNEL_DLOAD = 'dload';
 
+    private readonly Path $binary;
+    private readonly Path $workingDirectory;
+    private readonly ?Path $config;
+
     /**
-     * @param non-empty-string $binary Absolute path to the rapira executable. When missing, it is
+     * @param Path|non-empty-string $binary Absolute path to the rapira executable. When missing, it is
      * downloaded via dload into its parent directory, together with its bundled PHP runtime.
-     * @param non-empty-string $workingDirectory Absolute path to the application directory containing
-     * the worker script, from which the server is run.
+     * @param Path|non-empty-string $workingDirectory Absolute path to the application directory
+     * containing the worker script, from which the server is run.
      * @param non-empty-string|null $phpVersion Embedded-PHP version the downloaded rapira asset must
      * match, e.g. "8.5". When null, {@see DLoader::download()} picks its default.
-     * @param non-empty-string|null $config Base `rapira.toml` the server runs with; the listen address,
-     * mode and entrypoint from {@see RunRapira} replace its own. When null,
+     * @param Path|non-empty-string|null $config Base `rapira.toml` the server runs with; the listen
+     * address, mode and entrypoint from {@see RunRapira} replace its own. When null,
      * `{workingDirectory}/rapira.toml` is used if it exists.
      */
     public function __construct(
-        private readonly string $binary,
-        private readonly string $workingDirectory,
+        Path|string $binary,
+        Path|string $workingDirectory,
         private readonly ?string $phpVersion = null,
-        private readonly ?string $config = null,
-    ) {}
+        Path|string|null $config = null,
+    ) {
+        $this->binary = Path::create($binary);
+        $this->workingDirectory = Path::create($workingDirectory);
+        $this->config = $config === null ? null : Path::create($config);
+    }
 
     #[\Override]
     public function configure(Container $container): void
@@ -70,13 +78,13 @@ final class RunRapiraPlugin implements PluginConfigurator
      */
     private function ensureBinary(LoggerInterface $logger): void
     {
-        if (\file_exists($this->binary)) {
+        if ($this->binary->exists()) {
             return;
         }
 
-        (new DLoader($logger))->download(Path::create($this->binary)->parent(), $this->phpVersion);
+        (new DLoader($logger))->download($this->binary->parent(), $this->phpVersion);
 
-        if (!\file_exists($this->binary)) {
+        if (!$this->binary->exists()) {
             throw new \RuntimeException("rapira binary not found at: {$this->binary} (dload did not produce it)");
         }
     }
