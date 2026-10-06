@@ -11,7 +11,7 @@ namespace Rapira\Sdk\Testing\Double;
 final readonly class WorkerRequest
 {
     /**
-     * @param array<string, mixed> $server `$_SERVER` entries, layered over the process's own.
+     * @param array<string, mixed> $server The whole `$_SERVER` of the request, save the `REQUEST_TIME` pair.
      * @param array<array-key, mixed> $query `$_GET`.
      * @param array<array-key, mixed> $post `$_POST`.
      * @param array<array-key, mixed> $cookies `$_COOKIE`.

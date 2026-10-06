@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.6...testing-0.1.7) (2026-10-06)
+
+
+### Bug Fixes
+
+* **testing:** build a request's $_SERVER from the request alone ([f9e5e84](https://github.com/rapira-rs/sdk-php/commit/f9e5e84712172e2a3f7598607c8488f0f458c053))
+* **testing:** return true from every served FakeRuntime request ([10279b9](https://github.com/rapira-rs/sdk-php/commit/10279b9befc6b80ebe6b76970f2e5dfc81ba19f0))
+
 ## [0.1.6](https://github.com/rapira-rs/sdk-php/compare/testing-0.1.5...testing-0.1.6) (2026-10-06)
 
 

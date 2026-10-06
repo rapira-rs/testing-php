@@ -16,8 +16,8 @@ use Rapira\Mode;
  *
  * In {@see Mode::Worker} each entry of {@see $requests} is one request {@see handleRequest()} serves: its
  * superglobals are in place while the handler runs, and the previous ones come back afterwards. Like the
- * extension, the worker loop gives out no request at all once the queue is empty, and refuses outside
- * the mode that owns it.
+ * extension, it ignores what the handler returns, answers false only once the queue is empty, and
+ * refuses outside the mode that owns it.
  */
 final class FakeRuntime extends Runtime
 {
@@ -121,7 +121,10 @@ final class FakeRuntime extends Runtime
         \is_array($request) and $request = new WorkerRequest($request);
 
         $saved = [$_SERVER, $_GET, $_POST, $_COOKIE, $_FILES, $_REQUEST];
-        $_SERVER = $request->server + $_SERVER;
+        // The host builds $_SERVER from the request alone, with no boot-time entries, and PHP adds the
+        // REQUEST_TIME pair. Unlike the host, the double restores $saved: it shares the globals with the test.
+        $now = \microtime(true);
+        $_SERVER = $request->server + ['REQUEST_TIME_FLOAT' => $now, 'REQUEST_TIME' => (int) $now];
         $_GET = $request->query;
         $_POST = $request->post;
         $_COOKIE = $request->cookies;
@@ -130,13 +133,13 @@ final class FakeRuntime extends Runtime
 
         $this->captureOutput and \ob_start();
         try {
-            $continue = $handler();
+            $handler();
         } finally {
             $this->captureOutput and $this->outputs[] = (string) \ob_get_clean();
             [$_SERVER, $_GET, $_POST, $_COOKIE, $_FILES, $_REQUEST] = $saved;
         }
 
-        return $continue && $this->servedRequests < \count($this->requests);
+        return true;
     }
 
     #[\Override]

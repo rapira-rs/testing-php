@@ -96,6 +96,24 @@ final class FakeRuntimeTest
         }
     }
 
+    public function requestServerHoldsNothingFromTheProcess(): void
+    {
+        $_SERVER['HTTP_RAPIRA_TEST_BOOT'] = 'boot';
+        (new FakeRuntime(Mode::Worker, requests: [['REQUEST_URI' => '/']]))->install();
+        $seen = [];
+
+        try {
+            handle_request(static function () use (&$seen): bool {
+                $seen = \array_keys($_SERVER);
+                return true;
+            });
+        } finally {
+            unset($_SERVER['HTTP_RAPIRA_TEST_BOOT']);
+        }
+
+        Assert::same($seen, ['REQUEST_URI', 'REQUEST_TIME_FLOAT', 'REQUEST_TIME']);
+    }
+
     public function queuedRequestDescribesItselfAsAWebServerWould(): void
     {
         (new FakeRuntime(Mode::Worker))->queue('GET', '/search?q=rapira&page=2', cookies: ['sid' => 'abc'])->install();
@@ -149,12 +167,27 @@ final class FakeRuntimeTest
         Assert::same($runtime->outputs, ['served', 'served']);
     }
 
-    public function workerStopsWhenTheHandlerAsksTo(): void
+    public function everyServedRequestReturnsTrueAndTheDrainingCallServesNothing(): void
+    {
+        $runtime = (new FakeRuntime(Mode::Worker, requests: [[], []]))->install();
+        $calls = 0;
+        $handler = static function () use (&$calls): bool {
+            ++$calls;
+            return true;
+        };
+
+        Assert::same([handle_request($handler), handle_request($handler), handle_request($handler)], [true, true, false]);
+        Assert::same($calls, 2);
+        Assert::same($runtime->servedRequests, 2);
+    }
+
+    public function handlerReturningFalseDoesNotStopTheWorker(): void
     {
         $runtime = (new FakeRuntime(Mode::Worker, requests: [[], []]))->install();
 
-        Assert::false(handle_request(static fn(): bool => false));
-        Assert::same($runtime->servedRequests, 1);
+        Assert::true(handle_request(static fn(): bool => false));
+        Assert::true(handle_request(static fn(): bool => false));
+        Assert::same($runtime->servedRequests, 2);
     }
 
     public function workerWithAnEmptyQueueNeverRunsTheHandler(): void

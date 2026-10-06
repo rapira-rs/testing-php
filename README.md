@@ -112,7 +112,7 @@ try {
 }
 ```
 
-- **Worker mode:** each queued request sets `$_SERVER`, `$_GET`, `$_POST`, `$_COOKIE`, `$_FILES` and `$_REQUEST` while the handler runs; the previous values come back afterwards. `queue()` derives the usual `$_SERVER` entries from the method and URI and parses the query string; for full control pass a `WorkerRequest`, or a plain array of `$_SERVER` entries, in `requests`. The loop goes on while the handler returns `true`, as with the extension.
+- **Worker mode:** each queued request sets `$_SERVER`, `$_GET`, `$_POST`, `$_COOKIE`, `$_FILES` and `$_REQUEST` while the handler runs; the previous values come back afterwards. As on the host, `$_SERVER` holds only the request's entries and the `REQUEST_TIME` pair, nothing from the process's own. `queue()` derives the usual `$_SERVER` entries from the method and URI and parses the query string; for full control pass a `WorkerRequest`, or a plain array of `$_SERVER` entries, in `requests`. As with the extension, `handle_request()` ignores what the handler returns and gives `false` only once the queue is empty.
 - **Output:** with `captureOutput: true` what the handler prints lands in `$runtime->outputs`, one entry per request, instead of the test's own output.
 - **Dispatcher mode:** `get_dispatcher()` returns the `dispatcher` you pass.
 - **Logs and finished requests:** `log()` calls land in `$runtime->logs`, `rapira_finish_request()` calls in `$runtime->finishedRequests`.
